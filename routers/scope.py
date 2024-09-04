@@ -1,49 +1,34 @@
-import uuid
+from fastapi import Depends, HTTPException
 
-from fastapi import APIRouter, status, Depends, HTTPException
-from sqlmodel import Session
+from controller.auth import ScopeValidator
+from models import Role
+from models.user import Scope, ScopeCreate
+from utils.router import Models, UniqueNameRouter
 
-import crud
-from controller import RoleValidator
-from deps import get_session
-from models.user import Scope, ScopeCreate, Role
-
-router = APIRouter(prefix="/scopes", tags=["scopes"], dependencies=[Depends(RoleValidator(["admin"]))])
+scope_models = Models(base=Scope, create=ScopeCreate, read=Scope)
 
 
-@router.post("/", response_model=Scope, status_code=status.HTTP_201_CREATED)
-def create_scope(scope: ScopeCreate, db: Session = Depends(get_session)):
-    if crud.scope.get_scope_by_name(db, scope.name):
-        raise HTTPException(status_code=400, detail="Scope already exists")
-    return crud.scope.create_scope(db, scope.name)
+class ScopeRouter(UniqueNameRouter):
 
+    def __init__(self):
+        super().__init__(scope_models, tag="scopes", prefix="/scopes")
 
-@router.delete("/id", status_code=status.HTTP_204_NO_CONTENT)
-def delete_scope(scope_id: uuid.UUID, db: Session = Depends(get_session)):
-    if not crud.scope.get_scope(db, scope_id):
-        raise HTTPException(status_code=404, detail="Scope not found")
-    crud.scope.delete_scope(db, scope_id)
-    return None
+    def extension(self):
+        router = self
 
+        @router.post("/{role_name}/scopes/{scope_name}", response_model=Role)
+        def assign_scope_to_role(role_name: str, scope_name: str,
+                                 _: None = Depends(ScopeValidator("scopes:assign"))):
+            role = router.crud.read_raw(Role, name___is=role_name)
+            if not role:
+                raise HTTPException(status_code=404, detail="Role not found")
 
-@router.delete("/name", status_code=status.HTTP_204_NO_CONTENT)
-def delete_scope(scope_name: str, db: Session = Depends(get_session)):
-    scope = crud.get_scope_by_name(db, scope_name)
-    if not scope:
-        raise HTTPException(status_code=404, detail="Scope not found")
-    crud.scope.delete_scope(db, scope.id)
-    return None
+            scope = router.crud.read_raw(Scope, name___is=scope_name)
+            if not scope:
+                raise HTTPException(status_code=404, detail="Scope not found")
 
+            if not scope in role.scopes:
+                role.scopes.append(role)
+                router.crud.refresh(role)
 
-@router.post("/{role_name}/scopes/{scope_name}", response_model=Role)
-def assign_scope_to_role(role_name: str, scope_name: str, db: Session = Depends(get_session)):
-    role = crud.role.get_role_by_name(db, role_name)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
-
-    scope = crud.scope.get_scope_by_name(db, scope_name)
-    if not scope:
-        raise HTTPException(status_code=404, detail="Scope not found")
-
-    crud.scope.assign_scope_to_role(db, role, scope)
-    return role
+            return role

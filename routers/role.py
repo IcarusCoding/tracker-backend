@@ -1,49 +1,38 @@
 import uuid
 
-from fastapi import APIRouter, status, Depends, HTTPException
-from sqlmodel import Session
+from fastapi import Depends, HTTPException
 
-import crud
-from controller import RoleValidator
-from deps import get_session
-from models import Role, RoleCreate, UserRead
+from controller.auth import ScopeValidator
+from models import Role, RoleCreate
+from models import UserRead, User
+from models.user import RoleRead
+from utils.models import ObjectIdentifier
+from utils.router import Models, UniqueNameRouter
 
-router = APIRouter(prefix="/roles", tags=["roles"], dependencies=[Depends(RoleValidator(["admin"]))])
-
-
-@router.post("/", response_model=Role, status_code=status.HTTP_201_CREATED)
-def create_role(role: RoleCreate, db: Session = Depends(get_session)):
-    if crud.role.get_role_by_name(db, role.name):
-        raise HTTPException(status_code=400, detail="Role already exists")
-    return crud.role.create_role(db, role.name)
+role_models = Models(base=Role, create=RoleCreate, read=RoleRead)
 
 
-@router.delete("/id", status_code=status.HTTP_204_NO_CONTENT)
-def delete_role(role_id: uuid.UUID, db: Session = Depends(get_session)):
-    if not crud.get_role(db, role_id):
-        raise HTTPException(status_code=404, detail="Role not found")
-    crud.delete_role(db, role_id)
-    return None
+class RoleRouter(UniqueNameRouter):
 
+    def __init__(self):
+        super().__init__(role_models, tag="roles", prefix="/roles")
 
-@router.delete("/name", status_code=status.HTTP_204_NO_CONTENT)
-def delete_role(role_name: str, db: Session = Depends(get_session)):
-    role = crud.get_role_by_name(db, role_name)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
-    crud.delete_role(db, role.id)
-    return None
+    def extension(self):
+        router = self
 
+        @router.post("/{user_id}/roles/{role_name}", response_model=UserRead)
+        def assign_role_to_user(role_name: str, user_id: uuid.UUID,
+                                _: None = Depends(ScopeValidator("roles:assign"))):
+            user = router.crud.read(Role, ObjectIdentifier(id=user_id), model=User)
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
 
-@router.post("/{user_id}/roles/{role_name}", response_model=UserRead)
-def assign_role_to_user(user_id: uuid.UUID, role_name: str, db: Session = Depends(get_session)):
-    user = crud.user.get_user(db, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+            role = router.crud.read_raw(Role, name___id=role_name)
+            if not role:
+                raise HTTPException(status_code=404, detail="Role not found")
 
-    role = crud.role.get_role_by_name(db, role_name)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+            if not role in user.roles:
+                user.roles.append(role)
+                router.crud.refresh(user)
 
-    crud.role.assign_role_to_user(db, user, role)
-    return user
+            return user

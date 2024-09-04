@@ -8,3 +8,7 @@ class ObjectIdentifier(SQLModel):
 
     def __str__(self):
         return str(self.id)
+
+
+class NamedObject(ObjectIdentifier):
+    name: str = Field(max_length=255, unique=True)

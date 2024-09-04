@@ -13,6 +13,5 @@ router = APIRouter(tags=["auth"])
 
 @router.post("/token", response_model=Token)
 def login(user_login: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_session)):
-    print("adssad")
     user = auth.auth_user(UserLogin(name=user_login.username, password=user_login.password), db)
     return auth.create_token(user)

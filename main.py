@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from init import init_database
 from models import *
 from routers import auth
-from routers.device import DeviceRouter
+from routers.device import router
 from routers.role import RoleRouter
 from routers.scope import ScopeRouter
 from utils.router import UniqueNameRouter, Models
@@ -24,7 +24,7 @@ app = FastAPI(lifespan=lifespan, swagger_ui_parameters={"operationsSorter": "met
 user_models = Models(base=User, create=UserCreate, read=UserRead, update=UserUpdate)
 app.include_router(UniqueNameRouter(user_models, tag="users", prefix="/users"))
 
-app.include_router(DeviceRouter())
+app.include_router(router)
 app.include_router(RoleRouter())
 app.include_router(ScopeRouter())
 

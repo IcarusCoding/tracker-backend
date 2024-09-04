@@ -9,6 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from sqlmodel import Session
+from typing_extensions import override
 
 from deps import get_session
 from models import UserLogin, User, Token
@@ -99,6 +100,19 @@ class ScopeValidator:
         if self.needed_scope in user_scopes:
             return True
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f'Missing scope {self.needed_scope}')
+
+
+class ImplicitScopeValidator(ScopeValidator):
+    def __init__(self, needed_scope: str):
+        super().__init__(needed_scope)
+
+    @override
+    def __call__(self, user: Annotated[User, Depends(get_user)]):
+        return self
+
+    def validate(self, user: User):
+        super().__call__(user)
+
 
 
 def scope(needed_scope: str):

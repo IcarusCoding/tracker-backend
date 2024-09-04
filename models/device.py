@@ -2,6 +2,7 @@ import secrets
 import string
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -17,6 +18,9 @@ def generate_random_apikey(length: int = 32) -> str:
 class ApiKey(ObjectIdentifier, table=True):
     created: datetime = Field(default_factory=datetime.now)
     apikey: str = Field(default_factory=lambda: generate_random_apikey(), unique=True)
+    device_id: Optional[uuid.UUID] = Field(default=None, foreign_key="device.id", ondelete="CASCADE", nullable=False)
+
+    device: Optional["Device"] = Relationship(back_populates="apikey")
 
 
 class DeviceBase(NamedObject):
@@ -29,9 +33,11 @@ class DeviceInfo(DeviceBase):
 
 
 class Device(DeviceInfo, table=True):
-    apikey_id: uuid.UUID = Field(default=None, foreign_key="apikey.id", unique=True, nullable=True, ondelete="CASCADE")
     user: User = Relationship(back_populates="devices")
     locations: list["Location"] = Relationship(back_populates="device", cascade_delete=True)
+
+    apikey: Optional[ApiKey] = Relationship(back_populates="device",
+                                            sa_relationship_kwargs={"cascade": "all, delete-orphan", "uselist": False})
 
 
 class DeviceCreateOther(SQLModel):

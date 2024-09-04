@@ -15,7 +15,7 @@ class GenericCRUD(Generic[T]):
         "ge": lambda column: column.__ge__,
         "le": lambda column: column.__le__,
         "ne": lambda column: column.__ne__,
-        "is": lambda column: column.is_,
+        "is": lambda column: column.__eq__,
         "is_not": lambda column: column.is_not,
     }
 
@@ -77,6 +77,18 @@ class GenericCRUD(Generic[T]):
         if obj:
             self.session.delete(obj)
             self.session.commit()
+
+# TODO add transaction rollback support by not commiting directly
+    def delete_raw(self, model: Type[T], **kwargs) -> None:
+        filters = self.__create_filter(model, **kwargs)
+        sel: Select = select(model).filter(*filters)
+        result = self.session.exec(sel).all()
+
+        for obj in result:
+            self.session.delete(obj)
+
+        self.session.commit()
+
 
     def refresh(self, obj: T) -> None:
         self.session.add(obj)
